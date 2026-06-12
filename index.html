@@ -449,7 +449,7 @@
 // ─────────────────────────────────────────
 //  Config
 // ─────────────────────────────────────────
-const SCRIPT_URL = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwo04Akd79JHyCmCFkXRcv7I1Xu_7ZsQ3ZicBNVqcZhF40YbEaJlgI_MbIBfug1yO_4/exec';
 
 const DAMAGE_TYPES = [
   'Glass Crack/Break',
@@ -732,43 +732,60 @@ document.getElementById('qc-form').addEventListener('submit', async e => {
   btn.disabled = true;
   btn.textContent = 'Submitting…';
 
-  const formData = new FormData();
-  formData.append('inspector', document.getElementById('inspector').value);
-  formData.append('datetime',  document.getElementById('datetime').value);
-  formData.append('po_number', document.getElementById('po_number').value);
-  const vendorVal = document.getElementById('vendor').value;
+  // Build payload as JSON with base64-encoded photos
+  // (Apps Script cannot parse raw multipart binary — base64 is the workaround)
+  const vendorVal   = document.getElementById('vendor').value;
   const vendorOther = document.getElementById('vendor_other').value.trim();
-  formData.append('vendor', vendorVal === 'Other' ? `Other — ${vendorOther}` : vendorVal);
 
-  // Serialize each item
-  items.forEach((item, idx) => {
+  const payload = {
+    inspector: document.getElementById('inspector').value,
+    datetime:  document.getElementById('datetime').value,
+    po_number: document.getElementById('po_number').value,
+    vendor:    vendorVal === 'Other' ? `Other — ${vendorOther}` : vendorVal,
+    items: []
+  };
+
+  // Base64-encode all photos before sending
+  async function fileToBase64(file) {
+    return new Promise((res, rej) => {
+      const reader = new FileReader();
+      reader.onload = () => res({
+        name:     file.name,
+        mimeType: file.type,
+        data:     reader.result.split(',')[1]
+      });
+      reader.onerror = rej;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  for (let idx = 0; idx < items.length; idx++) {
+    const item = items[idx];
     const card = document.querySelector(`[data-item-id="${item.id}"]`);
-    const sku   = card.querySelector(`#sku-${item.id}`).value.trim();
-    const notes = card.querySelector(`#notes-${item.id}`).value.trim();
+    const sku    = card.querySelector(`#sku-${item.id}`).value.trim();
+    const notes  = card.querySelector(`#notes-${item.id}`).value.trim();
     const damage = Array.from(card.querySelectorAll(`input[name="item_${item.id}_damage"]:checked`))
                         .map(c => c.value).join(', ');
-    formData.append(`item_${idx+1}_sku`,    sku);
-    formData.append(`item_${idx+1}_damage`, damage);
-    formData.append(`item_${idx+1}_notes`,  notes);
-    item.files.forEach((file, fi) => {
-      formData.append(`item_${idx+1}_photo_${fi}`, file, file.name);
-    });
-  });
+    const photos = await Promise.all(item.files.map(f => fileToBase64(f)));
+    payload.items.push({ sku, damage, notes, photos });
+  }
 
   try {
-    const resp = await fetch(SCRIPT_URL, { method: 'POST', body: formData });
-    const result = await resp.json();
-    if (result.status === 'success') {
-      showToast('✓ Inspection submitted!');
-      document.getElementById('qc-form').reset();
-      document.getElementById('items-list').innerHTML = '';
-      items = [];
-      itemCounter = 0;
-      setNow();
-      addItem();
-    } else {
-      throw new Error(result.message || 'Unknown error');
-    }
+    // Apps Script requires no-cors mode — response will be opaque but data lands in Sheet
+    await fetch(SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload)
+    });
+    // no-cors responses are opaque — we can't read the body, assume success
+    showToast('✓ Inspection submitted!');
+    document.getElementById('qc-form').reset();
+    document.getElementById('items-list').innerHTML = '';
+    items = [];
+    itemCounter = 0;
+    setNow();
+    addItem();
   } catch (err) {
     console.error(err);
     showToast('Submission failed. Check connection and try again.', true);
