@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GSL Warehouse QC Inspection</title>
+  <style>
+    :root {
+      --green:     #2D5016;
+      --green-mid: #3D6B1F;
+      --green-lt:  #EAF0E0;
+      --amber:     #C8620A;
+      --amber-lt:  #FDF3E7;
+      --red:       #B91C1C;
+      --red-lt:    #FEE2E2;
+      --ink:       #1A1A1A;
+      --muted:     #5A5A5A;
+      --border:    #CDD4C0;
+      --white:     #FFFFFF;
+      --bg:        #F5F6F2;
+      --radius:    10px;
+      --tap:       52px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      font-size: 16px;
+      line-height: 1.5;
+      padding-bottom: 80px;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--green);
+      color: var(--white);
+      padding: 18px 20px 14px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    }
+    header .wordmark {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      opacity: 0.75;
+      margin-bottom: 2px;
+    }
+    header h1 { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+
+    /* ── Form shell ── */
+    form {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 20px 16px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .card-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--green-mid);
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ── Fields ── */
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    label { font-size: 13px; font-weight: 600; color: var(--muted); }
+    label .req { color: var(--amber); margin-left: 2px; }
+    .hint { font-size: 12px; color: var(--muted); }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    input[type="text"],
+    input[type="datetime-local"],
+    select,
+    textarea {
+      width: 100%;
+      min-height: var(--tap);
+      padding: 0 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-size: 16px;
+      color: var(--ink);
+      background: var(--white);
+      appearance: none;
+      -webkit-appearance: none;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus,
+    input[type="datetime-local"]:focus,
+    select:focus,
+    textarea:focus {
+      outline: none;
+      border-color: var(--green-mid);
+      box-shadow: 0 0 0 3px rgba(61,107,31,0.12);
+    }
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235A5A5A' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      padding-right: 40px;
+    }
+    textarea {
+      min-height: 90px;
+      padding: 12px 14px;
+      resize: vertical;
+      line-height: 1.5;
+    }
+    input[type="datetime-local"] { padding: 0 12px; }
+
+    /* ── Item cards ── */
+    .items-list { display: flex; flex-direction: column; gap: 12px; }
+
+    .item-card {
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .item-card.item-error { border-color: var(--red); }
+
+    .item-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 13px 16px;
+      background: var(--bg);
+      cursor: pointer;
+      user-select: none;
+      gap: 10px;
+    }
+    .item-header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 1;
+      min-width: 0;
+    }
+    .item-badge {
+      background: var(--green);
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .item-summary {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--ink);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .item-summary.placeholder { color: var(--muted); font-weight: 400; }
+
+    .item-chevron {
+      color: var(--muted);
+      font-size: 12px;
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+    .item-card.collapsed .item-chevron { transform: rotate(-90deg); }
+
+    .item-remove {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 18px;
+      cursor: pointer;
+      padding: 4px;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .item-remove:hover { color: var(--red); }
+
+    .item-body {
+      padding: 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      background: var(--white);
+    }
+    .item-card.collapsed .item-body { display: none; }
+
+    /* ── Damage checkboxes ── */
+    .damage-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .damage-option {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: var(--tap);
+      padding: 0 12px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.12s, border-color 0.12s;
+      user-select: none;
+    }
+    .damage-option input[type="checkbox"] { display: none; }
+    .check-box {
+      width: 22px;
+      height: 22px;
+      border: 2px solid var(--border);
+      border-radius: 5px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .damage-option input:checked ~ .check-box {
+      background: var(--green-mid);
+      border-color: var(--green-mid);
+    }
+    .damage-option input:checked ~ .check-box::after {
+      content: '';
+      width: 6px;
+      height: 10px;
+      border: 2px solid white;
+      border-top: none;
+      border-left: none;
+      transform: rotate(45deg) translate(-1px,-1px);
+      display: block;
+    }
+    .damage-option input:checked ~ .check-label { font-weight: 600; color: var(--green); }
+    .damage-option:has(input:checked) { background: var(--green-lt); border-color: var(--green-mid); }
+    .check-label { font-size: 13px; color: var(--ink); line-height: 1.3; }
+
+    /* ── Photo upload ── */
+    .photo-zone {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 20px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .photo-zone:hover, .photo-zone.dragover {
+      border-color: var(--green-mid);
+      background: var(--green-lt);
+    }
+    .photo-zone input[type="file"] { display: none; }
+    .photo-icon { font-size: 28px; margin-bottom: 4px; }
+    .photo-zone p { font-size: 13px; color: var(--muted); }
+    .photo-zone strong { color: var(--green-mid); }
+
+    .photo-preview {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .photo-preview .thumb {
+      position: relative;
+      width: 76px;
+      height: 76px;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1.5px solid var(--border);
+    }
+    .photo-preview .thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .photo-preview .thumb button {
+      position: absolute;
+      top: 2px;
+      right: 2px;
+      background: rgba(0,0,0,0.55);
+      border: none;
+      color: white;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ── Add Item button ── */
+    .add-item-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      min-height: 52px;
+      background: var(--white);
+      border: 2px dashed var(--green-mid);
+      border-radius: var(--radius);
+      color: var(--green-mid);
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .add-item-btn:hover { background: var(--green-lt); }
+
+    /* ── Submit ── */
+    button[type="submit"] {
+      width: 100%;
+      min-height: 58px;
+      background: var(--green);
+      color: white;
+      font-size: 17px;
+      font-weight: 700;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    button[type="submit"]:active { transform: scale(0.98); background: var(--green-mid); }
+    button[type="submit"]:disabled { background: #999; cursor: not-allowed; transform: none; }
+
+    /* ── Toast ── */
+    #toast {
+      display: none;
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--green);
+      color: white;
+      padding: 14px 24px;
+      border-radius: 30px;
+      font-size: 15px;
+      font-weight: 600;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      z-index: 100;
+      white-space: nowrap;
+    }
+    #toast.error { background: var(--red); }
+
+    @media (max-width: 380px) {
+      .damage-grid { grid-template-columns: 1fr; }
+      .two-col { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="wordmark">Golden State Lumber</div>
+  <h1>Warehouse QC Inspection</h1>
+</header>
+
+<form id="qc-form" novalidate>
+
+  <!-- ── Inspector & Date ── -->
+  <div class="card">
+    <div class="card-title">Inspector &amp; Date</div>
+    <div class="two-col">
+      <div class="field">
+        <label for="inspector">Inspector <span class="req">*</span></label>
+        <select id="inspector" name="inspector" required>
+          <option value="">Select name</option>
+          <option>Marlin</option>
+          <option>Oscar</option>
+          <option>Robert</option>
+          <option>Rudy</option>
+          <option>Tommy</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="datetime">Date &amp; Time <span class="req">*</span></label>
+        <input type="datetime-local" id="datetime" name="datetime" required />
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Order Info ── -->
+  <div class="card">
+    <div class="card-title">Order</div>
+    <div class="field">
+      <label for="po_number">PO / Order Number <span class="req">*</span></label>
+      <input type="text" id="po_number" name="po_number" placeholder="e.g. PO-10482" required />
+    </div>
+    <div class="field">
+      <label for="vendor">Vendor / Manufacturer <span class="req">*</span></label>
+      <select id="vendor" name="vendor" required>
+        <option value="">Select vendor</option>
+        <option>A.G. Millworks</option>
+        <option>All Weather</option>
+        <option>Andersen</option>
+        <option>Awake</option>
+        <option>Jeld-Wen</option>
+        <option>La Cantina</option>
+        <option>Marvin Elevate</option>
+        <option>Marvin Essential</option>
+        <option>Marvin Modern</option>
+        <option>Marvin Ultimate</option>
+        <option>Marvin Vivid</option>
+        <option>Milgard</option>
+        <option>Simonton</option>
+        <option>WeatherShield</option>
+        <option>Other</option>
+      </select>
+    </div>
+    <div class="field" id="vendor-other-field" style="display:none;">
+      <label for="vendor_other">Vendor Name <span class="req">*</span></label>
+      <input type="text" id="vendor_other" name="vendor_other" placeholder="Enter vendor or manufacturer name" />
+    </div>
+  </div>
+
+  <!-- ── Items ── -->
+  <div class="card">
+    <div class="card-title">Damaged Items</div>
+    <div class="items-list" id="items-list"></div>
+    <button type="button" class="add-item-btn" id="add-item-btn">
+      <span style="font-size:20px;line-height:1">+</span> Add Item
+    </button>
+  </div>
+
+  <!-- ── Submit ── -->
+  <button type="submit" id="submit-btn">Submit Inspection Report</button>
+
+</form>
+
+<div id="toast"></div>
+
+<script>
+// ─────────────────────────────────────────
+//  Config
+// ─────────────────────────────────────────
+const SCRIPT_URL = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec';
+
+const DAMAGE_TYPES = [
+  'Glass Crack/Break',
+  'Glass Scratch (Surface)',
+  'Glass Scratch (In Between Glass)',
+  'Bowed Sash',
+  'Out of Square Sash',
+  'Frame Damage',
+  'Screen Damage',
+  'Hardware Missing/Broken',
+  'Finish/Paint Damage',
+  'Shipping/Packaging',
+  'Wrong Item/Mismatch',
+  'Other'
+];
+
+// ─────────────────────────────────────────
+//  State
+// ─────────────────────────────────────────
+let itemCounter = 0;
+let items = []; // { id, files[] }
+
+// ─────────────────────────────────────────
+//  Auto-fill datetime
+// ─────────────────────────────────────────
+function setNow() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  document.getElementById('datetime').value =
+    `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
+setNow();
+
+// ─────────────────────────────────────────
+//  Build damage checkbox grid HTML
+// ─────────────────────────────────────────
+// ─────────────────────────────────────────
+//  Vendor "Other" toggle
+// ─────────────────────────────────────────
+document.getElementById('vendor').addEventListener('change', function() {
+  const otherField = document.getElementById('vendor-other-field');
+  const otherInput = document.getElementById('vendor_other');
+  if (this.value === 'Other') {
+    otherField.style.display = '';
+    otherInput.required = true;
+    otherInput.focus();
+  } else {
+    otherField.style.display = 'none';
+    otherInput.required = false;
+    otherInput.value = '';
+  }
+});
+
+// ─────────────────────────────────────────
+//  Build damage checkbox grid HTML
+// ─────────────────────────────────────────
+function damageGridHTML(itemId) {
+  return DAMAGE_TYPES.map(type => `
+    <label class="damage-option">
+      <input type="checkbox" name="item_${itemId}_damage" value="${type}" />
+      <span class="check-box"></span>
+      <span class="check-label">${type}</span>
+    </label>
+  `).join('');
+}
+
+// ─────────────────────────────────────────
+//  Add item
+// ─────────────────────────────────────────
+function addItem() {
+  itemCounter++;
+  const id = itemCounter;
+  items.push({ id, files: [] });
+
+  const card = document.createElement('div');
+  card.className = 'item-card';
+  card.dataset.itemId = id;
+
+  card.innerHTML = `
+    <div class="item-header">
+      <div class="item-header-left">
+        <span class="item-badge">${id}</span>
+        <span class="item-summary placeholder" id="summary-${id}">New item</span>
+      </div>
+      <span class="item-chevron">▼</span>
+      <button type="button" class="item-remove" title="Remove item">✕</button>
+    </div>
+    <div class="item-body">
+      <div class="field">
+        <label for="sku-${id}">Product Tag / SKU</label>
+        <input type="text" id="sku-${id}" name="item_${id}_sku" placeholder="e.g. AND-TW-3050" />
+      </div>
+      <div class="field">
+        <label>Damage Type <span class="req">*</span> <span class="hint">(select all that apply)</span></label>
+        <div class="damage-grid">${damageGridHTML(id)}</div>
+      </div>
+      <div class="field">
+        <label for="notes-${id}">Notes</label>
+        <textarea id="notes-${id}" name="item_${id}_notes" placeholder="Location of damage, measurements, anything relevant…"></textarea>
+      </div>
+      <div class="field">
+        <label>Photos</label>
+        <div class="photo-zone" id="zone-${id}">
+          <input type="file" id="photos-${id}" accept="image/*" multiple />
+          <div class="photo-icon">📷</div>
+          <p><strong>Tap to add photos</strong></p>
+          <p>or drag and drop here</p>
+        </div>
+        <div class="photo-preview" id="preview-${id}"></div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('items-list').appendChild(card);
+
+  // Collapse / expand toggle
+  card.querySelector('.item-header').addEventListener('click', e => {
+    if (e.target.closest('.item-remove')) return;
+    card.classList.toggle('collapsed');
+  });
+
+  // Remove button
+  card.querySelector('.item-remove').addEventListener('click', () => {
+    items = items.filter(it => it.id !== id);
+    card.remove();
+    renumberBadges();
+  });
+
+  // SKU → summary label
+  const skuInput = card.querySelector(`#sku-${id}`);
+  skuInput.addEventListener('input', () => {
+    updateSummary(id);
+  });
+
+  // Damage checkbox → summary
+  card.querySelectorAll(`input[name="item_${id}_damage"]`).forEach(cb => {
+    cb.addEventListener('change', () => updateSummary(id));
+  });
+
+  // Photo zone
+  const zone = card.querySelector(`#zone-${id}`);
+  const fileInput = card.querySelector(`#photos-${id}`);
+
+  zone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', e => {
+    addFilesToItem(id, Array.from(e.target.files));
+    e.target.value = '';
+  });
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('dragover');
+    addFilesToItem(id, Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')));
+  });
+}
+
+// ─────────────────────────────────────────
+//  Summary line in collapsed header
+// ─────────────────────────────────────────
+function updateSummary(id) {
+  const card = document.querySelector(`[data-item-id="${id}"]`);
+  if (!card) return;
+  const sku = card.querySelector(`#sku-${id}`).value.trim();
+  const checked = Array.from(card.querySelectorAll(`input[name="item_${id}_damage"]:checked`)).map(c => c.value);
+  const summaryEl = card.querySelector(`#summary-${id}`);
+  const parts = [];
+  if (sku) parts.push(sku);
+  if (checked.length) parts.push(checked.join(', '));
+  if (parts.length) {
+    summaryEl.textContent = parts.join(' — ');
+    summaryEl.classList.remove('placeholder');
+  } else {
+    summaryEl.textContent = 'New item';
+    summaryEl.classList.add('placeholder');
+  }
+}
+
+// ─────────────────────────────────────────
+//  Renumber badges after removal
+// ─────────────────────────────────────────
+function renumberBadges() {
+  document.querySelectorAll('.item-card').forEach((card, idx) => {
+    card.querySelector('.item-badge').textContent = idx + 1;
+  });
+}
+
+// ─────────────────────────────────────────
+//  Photos per item
+// ─────────────────────────────────────────
+function addFilesToItem(itemId, files) {
+  const item = items.find(it => it.id === itemId);
+  if (!item) return;
+  const preview = document.getElementById(`preview-${itemId}`);
+  files.forEach(file => {
+    item.files.push(file);
+    const fileIdx = item.files.length - 1;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const div = document.createElement('div');
+      div.className = 'thumb';
+      div.dataset.fileIdx = fileIdx;
+      div.innerHTML = `<img src="${ev.target.result}" alt="photo" /><button type="button" title="Remove">✕</button>`;
+      div.querySelector('button').addEventListener('click', () => {
+        item.files.splice(parseInt(div.dataset.fileIdx), 1);
+        div.remove();
+        preview.querySelectorAll('.thumb').forEach((t, i) => t.dataset.fileIdx = i);
+      });
+      preview.appendChild(div);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// ─────────────────────────────────────────
+//  Add item button + start with one item
+// ─────────────────────────────────────────
+document.getElementById('add-item-btn').addEventListener('click', addItem);
+addItem(); // start with one
+
+// ─────────────────────────────────────────
+//  Toast
+// ─────────────────────────────────────────
+function showToast(msg, isError = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = isError ? 'error' : '';
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3800);
+}
+
+// ─────────────────────────────────────────
+//  Validation
+// ─────────────────────────────────────────
+function validate() {
+  // Top-level required
+  for (const id of ['inspector','datetime','po_number','vendor']) {
+    if (!document.getElementById(id).value.trim()) {
+      document.getElementById(id).focus();
+      showToast('Please fill in all required fields.', true);
+      return false;
+    }
+  }
+  // If vendor is Other, require the text field
+  if (document.getElementById('vendor').value === 'Other' &&
+      !document.getElementById('vendor_other').value.trim()) {
+    document.getElementById('vendor_other').focus();
+    showToast('Please enter the vendor name.', true);
+    return false;
+  }
+  // Must have at least one item
+  if (items.length === 0) {
+    showToast('Add at least one damaged item.', true);
+    return false;
+  }
+  // Each item needs at least one damage type
+  for (const item of items) {
+    const card = document.querySelector(`[data-item-id="${item.id}"]`);
+    const checked = card.querySelectorAll(`input[name="item_${item.id}_damage"]:checked`);
+    if (!checked.length) {
+      card.classList.remove('collapsed');
+      card.classList.add('item-error');
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      showToast('Select at least one damage type for each item.', true);
+      return false;
+    }
+    card.classList.remove('item-error');
+  }
+  return true;
+}
+
+// ─────────────────────────────────────────
+//  Submit
+// ─────────────────────────────────────────
+document.getElementById('qc-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!validate()) return;
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+
+  const formData = new FormData();
+  formData.append('inspector', document.getElementById('inspector').value);
+  formData.append('datetime',  document.getElementById('datetime').value);
+  formData.append('po_number', document.getElementById('po_number').value);
+  const vendorVal = document.getElementById('vendor').value;
+  const vendorOther = document.getElementById('vendor_other').value.trim();
+  formData.append('vendor', vendorVal === 'Other' ? `Other — ${vendorOther}` : vendorVal);
+
+  // Serialize each item
+  items.forEach((item, idx) => {
+    const card = document.querySelector(`[data-item-id="${item.id}"]`);
+    const sku   = card.querySelector(`#sku-${item.id}`).value.trim();
+    const notes = card.querySelector(`#notes-${item.id}`).value.trim();
+    const damage = Array.from(card.querySelectorAll(`input[name="item_${item.id}_damage"]:checked`))
+                        .map(c => c.value).join(', ');
+    formData.append(`item_${idx+1}_sku`,    sku);
+    formData.append(`item_${idx+1}_damage`, damage);
+    formData.append(`item_${idx+1}_notes`,  notes);
+    item.files.forEach((file, fi) => {
+      formData.append(`item_${idx+1}_photo_${fi}`, file, file.name);
+    });
+  });
+
+  try {
+    const resp = await fetch(SCRIPT_URL, { method: 'POST', body: formData });
+    const result = await resp.json();
+    if (result.status === 'success') {
+      showToast('✓ Inspection submitted!');
+      document.getElementById('qc-form').reset();
+      document.getElementById('items-list').innerHTML = '';
+      items = [];
+      itemCounter = 0;
+      setNow();
+      addItem();
+    } else {
+      throw new Error(result.message || 'Unknown error');
+    }
+  } catch (err) {
+    console.error(err);
+    showToast('Submission failed. Check connection and try again.', true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Submit Inspection Report';
+  }
+});
+</script>
+</body>
+</html>
